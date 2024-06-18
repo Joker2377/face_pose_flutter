@@ -24,6 +24,28 @@ class CameraScreen extends StatefulWidget {
   _CameraScreenState createState() => _CameraScreenState();
 }
 
+class CameraPreviewCropped extends StatelessWidget {
+  final CameraController controller;
+  const CameraPreviewCropped({required this.controller});
+
+  Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size.width;
+    return SizedBox(
+      width: size,
+      height: size,
+      child: FittedBox(
+        fit: BoxFit.fitWidth,
+        clipBehavior: Clip.hardEdge,
+        child: SizedBox(
+          width: size,
+          height: size * controller.value.aspectRatio,
+          child: CameraPreview(controller),
+        ),
+      ),
+    );
+  }
+}
+
 class _CameraScreenState extends State<CameraScreen> {
   late CameraController _controller;
   late Future<void> _initializeControllerFuture;
@@ -57,7 +79,7 @@ class _CameraScreenState extends State<CameraScreen> {
           future: _initializeControllerFuture,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.done) {
-              return CameraPreview(_controller);
+              return CameraPreviewCropped(controller: _controller);
             } else {
               return const Center(child: CircularProgressIndicator());
             }
