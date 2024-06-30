@@ -1,7 +1,9 @@
 import 'package:camera/camera.dart';
+import 'package:face_pose/TFLiteModel.dart';
 import 'package:flutter/material.dart';
 import 'dart:typed_data';
 import 'package:image/image.dart' as imglib;
+import 'TFliteModel.dart' as tfm;
 
 imglib.Image _convertYUV420toRGBImage(CameraImage image) {
   final int width = image.width;
@@ -104,12 +106,19 @@ class CameraScreen extends StatefulWidget {
 class _CameraScreenState extends State<CameraScreen> {
   late CameraController _controller;
   late Future<void> _initializeControllerFuture;
+  late TFliteModel model;
+  bool isModelLoaded = false;
+
   int _frameCount = 0;
   Uint8List? _imgBytes;
+  var processing = false;
+  String mes = "nothing yet";
+  imglib.Image? _currimg;
 
   @override
   void initState() {
     super.initState();
+    _loadModel();
     _controller = CameraController(
       widget.camera,
       ResolutionPreset.low,
@@ -119,8 +128,11 @@ class _CameraScreenState extends State<CameraScreen> {
     _initializeControllerFuture.then((_) {
       _controller.startImageStream((CameraImage image) {
         _frameCount++;
-        if (_frameCount % 100 == 0) {
+        if (processing == false && isModelLoaded && _frameCount % 10 == 0) {
+          processing = true;
           _processImage(image);
+        } else {
+          print('isModelLoaded: $isModelLoaded, processing: $processing');
         }
       });
     });
@@ -132,17 +144,31 @@ class _CameraScreenState extends State<CameraScreen> {
     super.dispose();
   }
 
+  Future<void> _loadModel() async {
+    model = TFliteModel();
+    await model.loadModel();
+    isModelLoaded = true;
+  }
+
   void _processImage(CameraImage image) async {
     int start_time = DateTime.now().millisecondsSinceEpoch;
     imglib.Image img = _convertYUV420toRGBImage(image);
+    setState(() {
+      _currimg = img;
+    });
     print(
         'Processing time: ${DateTime.now().millisecondsSinceEpoch - start_time} ms');
     start_time = DateTime.now().millisecondsSinceEpoch;
-    Uint8List imgBytes = Uint8List.fromList(imglib.encodePng(img, level: 0));
+    var pose = await model.predictPose(img);
+    processing = false;
     print(
-        'Encoding time: ${DateTime.now().millisecondsSinceEpoch - start_time} ms');
+        'Predicting time: ${DateTime.now().millisecondsSinceEpoch - start_time} ms');
+    print('Pose: $pose');
     setState(() {
-      _imgBytes = imgBytes;
+      var pitch = pose['pitch']!.toStringAsFixed(2);
+      var yaw = pose['yaw']!.toStringAsFixed(2);
+      var roll = pose['roll']!.toStringAsFixed(2);
+      mes = 'Pitch: $pitch, Yaw: $yaw, Roll: $roll';
     });
   }
 
@@ -157,36 +183,32 @@ class _CameraScreenState extends State<CameraScreen> {
             return Column(
               children: [
                 Expanded(
-                  child: ClipRect(
-                    child: OverflowBox(
-                      alignment: Alignment.center,
-                      child: FittedBox(
-                        fit: BoxFit.cover,
-                        child: Container(
-                          width: MediaQuery.of(context).size.width,
-                          height: MediaQuery.of(context).size.width *
-                              _controller.value.aspectRatio,
-                          child: CameraPreview(_controller),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: _imgBytes != null
+                  child: _currimg != null
                       ? Image.memory(
-                          _imgBytes!,
-                          fit: BoxFit.cover,
+                          Uint8List.fromList(imglib.encodeJpg(_currimg!)),
+                          gaplessPlayback: true,
+                          fit: BoxFit.contain,
                         )
-                      : Container(
-                          color: Colors.black,
-                          child: Center(
-                            child: Text(
-                              'No image yet',
-                              style: TextStyle(color: Colors.white),
+                      : ClipRect(
+                          child: OverflowBox(
+                            alignment: Alignment.center,
+                            child: FittedBox(
+                              fit: BoxFit.cover,
+                              child: Container(
+                                width: MediaQuery.of(context).size.width,
+                                height: MediaQuery.of(context).size.width *
+                                    _controller.value.aspectRatio,
+                                child: CameraPreview(_controller),
+                              ),
                             ),
                           ),
                         ),
+                ),
+                SizedBox(
+                  height: 20,
+                  child: Text(
+                    mes,
+                  ),
                 ),
               ],
             );
