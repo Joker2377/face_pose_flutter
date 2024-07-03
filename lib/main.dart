@@ -132,6 +132,7 @@ class _CameraScreenState extends State<CameraScreen> {
   var streaming = false;
   var zoom_factor = 1;
   var scrollX = 0.0, scrollY = 0.0;
+  var thres = 0.3;
 
   @override
   void initState() {
@@ -147,7 +148,7 @@ class _CameraScreenState extends State<CameraScreen> {
       _controller.startImageStream((CameraImage image) {
         if (streaming == true) {
           _frameCount++;
-          if (processing == false && isModelLoaded && _frameCount % 6 == 0) {
+          if (processing == false && isModelLoaded && _frameCount % 7 == 0) {
             _frameCount = 0;
             processing = true;
             _processImage(image);
@@ -295,6 +296,29 @@ class _CameraScreenState extends State<CameraScreen> {
                           : (value) {
                               setState(() {
                                 scrollY = value;
+                              });
+                            },
+                    )),
+                    SizedBox(width: 10),
+                  ],
+                ),
+                Row(
+                  children: [
+                    SizedBox(width: 20),
+                    Text('Threshold: $thres'),
+                    Expanded(
+                        child: Slider(
+                      min: 0.0,
+                      max: 1.0,
+                      divisions: 10,
+                      label: '$thres',
+                      value: thres.toDouble(),
+                      onChanged: streaming
+                          ? null
+                          : (value) {
+                              setState(() {
+                                thres = value;
+                                model.setThres(thres);
                               });
                             },
                     )),

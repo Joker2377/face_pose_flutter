@@ -1,5 +1,3 @@
-import 'dart:ffi';
-
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:image/image.dart' as imglib;
 import 'dart:typed_data';
@@ -8,7 +6,11 @@ import 'dart:math' as math;
 class TFliteModel {
   final String modelPath = 'assets/final0526.tflite';
   Interpreter? _interpreter;
-  final double threshold = 0.3;
+  var threshold = 0.3;
+
+  void setThres(double thres) {
+    threshold = thres;
+  }
 
   Future<void> loadModel() async {
     try {
