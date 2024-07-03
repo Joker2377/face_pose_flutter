@@ -8,6 +8,7 @@ import 'dart:math' as math;
 class TFliteModel {
   final String modelPath = 'assets/final0526.tflite';
   Interpreter? _interpreter;
+  final double threshold = 0.3;
 
   Future<void> loadModel() async {
     try {
@@ -58,6 +59,16 @@ class TFliteModel {
       var yaw = dotProduct(yawSoftmax, bins);
       var roll = dotProduct(rollSoftmax, bins);
 
+      var pitchConfidence = sumTop3(pitchSoftmax);
+      var yawConfidence = sumTop3(yawSoftmax);
+      var rollConfidence = sumTop3(rollSoftmax);
+
+      var confidence = (pitchConfidence + yawConfidence + rollConfidence) / 3;
+
+      if (confidence < threshold) {
+        return {};
+      }
+
       return {'pitch': pitch, 'yaw': yaw, 'roll': roll};
     } catch (e, stackTrace) {
       print('Error in predictPose: $e');
@@ -68,6 +79,12 @@ class TFliteModel {
 
   void dispose() {
     _interpreter?.close();
+  }
+
+  static double sumTop3(List<double> numbers) {
+    numbers.sort((a, b) => b.compareTo(a));
+    double sum = numbers.take(3).reduce((a, b) => a + b);
+    return sum;
   }
 
   static double dotProduct(List<double> a, List<double> b) {

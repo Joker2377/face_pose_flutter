@@ -3,7 +3,6 @@ import 'package:face_pose/TFLiteModel.dart';
 import 'package:flutter/material.dart';
 import 'dart:typed_data';
 import 'package:image/image.dart' as imglib;
-import 'TFliteModel.dart' as tfm;
 
 imglib.Image _convertYUV420toRGBImage(CameraImage image) {
   final int width = image.width;
@@ -72,6 +71,23 @@ int _yuvToRgb(int y, int u, int v) {
   return 0xff000000 | (r << 16) | (g << 8) | b;
 }
 
+imglib.Image square_crop(
+    imglib.Image img, int zoom, double scrollXPercent, double scrollYPercent) {
+  int minDimension = img.width < img.height ? img.width : img.height;
+  int size = minDimension ~/ zoom;
+
+  int scrollX = (img.width * scrollXPercent).toInt();
+  int scrollY = (img.height * scrollYPercent).toInt();
+
+  int x = ((img.width - size) ~/ 2) + scrollX;
+  int y = ((img.height - size) ~/ 2) + scrollY;
+
+  x = x.clamp(0, img.width - size);
+  y = y.clamp(0, img.height - size);
+
+  return imglib.copyCrop(img, x, y, size, size);
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final cameras = await availableCameras();
@@ -110,10 +126,12 @@ class _CameraScreenState extends State<CameraScreen> {
   bool isModelLoaded = false;
 
   int _frameCount = 0;
-  Uint8List? _imgBytes;
   var processing = false;
   String mes = "nothing yet";
   imglib.Image? _currimg;
+  var streaming = false;
+  var zoom_factor = 1;
+  var scrollX = 0.0, scrollY = 0.0;
 
   @override
   void initState() {
@@ -127,12 +145,21 @@ class _CameraScreenState extends State<CameraScreen> {
     _initializeControllerFuture = _controller.initialize();
     _initializeControllerFuture.then((_) {
       _controller.startImageStream((CameraImage image) {
-        _frameCount++;
-        if (processing == false && isModelLoaded && _frameCount % 10 == 0) {
-          processing = true;
-          _processImage(image);
+        if (streaming == true) {
+          _frameCount++;
+          if (processing == false && isModelLoaded && _frameCount % 6 == 0) {
+            _frameCount = 0;
+            processing = true;
+            _processImage(image);
+          } else {
+            print('isModelLoaded: $isModelLoaded, processing: $processing');
+          }
         } else {
-          print('isModelLoaded: $isModelLoaded, processing: $processing');
+          imglib.Image img = _convertYUV420toRGBImage(image);
+          img = square_crop(img, zoom_factor, scrollX, scrollY);
+          setState(() {
+            _currimg = imglib.copyResize(img, width: 224, height: 224);
+          });
         }
       });
     });
@@ -150,12 +177,11 @@ class _CameraScreenState extends State<CameraScreen> {
     isModelLoaded = true;
   }
 
-  void _processImage(CameraImage image) async {
+  Future<void> _processImage(CameraImage image) async {
     int start_time = DateTime.now().millisecondsSinceEpoch;
     imglib.Image img = _convertYUV420toRGBImage(image);
-    setState(() {
-      _currimg = img;
-    });
+    img = square_crop(img, zoom_factor, scrollX, scrollY);
+    _currimg = imglib.copyResize(img, width: 224, height: 224);
     print(
         'Processing time: ${DateTime.now().millisecondsSinceEpoch - start_time} ms');
     start_time = DateTime.now().millisecondsSinceEpoch;
@@ -164,12 +190,19 @@ class _CameraScreenState extends State<CameraScreen> {
     print(
         'Predicting time: ${DateTime.now().millisecondsSinceEpoch - start_time} ms');
     print('Pose: $pose');
-    setState(() {
+    if (pose.isNotEmpty) {
       var pitch = pose['pitch']!.toStringAsFixed(2);
       var yaw = pose['yaw']!.toStringAsFixed(2);
       var roll = pose['roll']!.toStringAsFixed(2);
-      mes = 'Pitch: $pitch, Yaw: $yaw, Roll: $roll';
-    });
+      setState(() {
+        _currimg = _currimg;
+        mes = 'Pitch: $pitch, Yaw: $yaw, Roll: $roll';
+      });
+    } else {
+      setState(() {
+        mes = 'Detection failed';
+      });
+    }
   }
 
   @override
@@ -185,24 +218,16 @@ class _CameraScreenState extends State<CameraScreen> {
                 Expanded(
                   child: _currimg != null
                       ? Image.memory(
-                          Uint8List.fromList(imglib.encodeJpg(_currimg!)),
+                          Uint8List.fromList(
+                              imglib.encodeJpg(_currimg!, quality: 10)),
                           gaplessPlayback: true,
                           fit: BoxFit.contain,
                         )
-                      : ClipRect(
-                          child: OverflowBox(
-                            alignment: Alignment.center,
-                            child: FittedBox(
-                              fit: BoxFit.cover,
-                              child: Container(
-                                width: MediaQuery.of(context).size.width,
-                                height: MediaQuery.of(context).size.width *
-                                    _controller.value.aspectRatio,
-                                child: CameraPreview(_controller),
-                              ),
-                            ),
-                          ),
-                        ),
+                      : const Center(
+                          child: SizedBox(
+                              width: 50,
+                              height: 50,
+                              child: CircularProgressIndicator())),
                 ),
                 SizedBox(
                   height: 20,
@@ -210,10 +235,90 @@ class _CameraScreenState extends State<CameraScreen> {
                     mes,
                   ),
                 ),
+                Row(
+                  children: [
+                    SizedBox(width: 20),
+                    Text('Zoom factor: $zoom_factor'),
+                    Expanded(
+                        child: Slider(
+                      min: 1,
+                      max: 5,
+                      divisions: 4,
+                      label: '$zoom_factor',
+                      value: zoom_factor.toDouble(),
+                      onChanged: streaming
+                          ? null
+                          : (value) {
+                              setState(() {
+                                zoom_factor = value.toInt();
+                              });
+                            },
+                    )),
+                    SizedBox(width: 10),
+                  ],
+                ),
+                Row(
+                  children: [
+                    SizedBox(width: 20),
+                    Text('Scroll X: $scrollX'),
+                    Expanded(
+                        child: Slider(
+                      min: -10.0,
+                      max: 10.0,
+                      divisions: 2,
+                      label: '$scrollX',
+                      value: scrollX.toDouble(),
+                      onChanged: streaming
+                          ? null
+                          : (value) {
+                              setState(() {
+                                scrollX = value;
+                              });
+                            },
+                    )),
+                    SizedBox(width: 10),
+                  ],
+                ),
+                Row(
+                  children: [
+                    SizedBox(width: 20),
+                    Text('Scroll Y: $scrollY'),
+                    Expanded(
+                        child: Slider(
+                      min: -10.0,
+                      max: 10.0,
+                      divisions: 2,
+                      label: '$scrollY',
+                      value: scrollY.toDouble(),
+                      onChanged: streaming
+                          ? null
+                          : (value) {
+                              setState(() {
+                                scrollY = value;
+                              });
+                            },
+                    )),
+                    SizedBox(width: 10),
+                  ],
+                ),
+                ButtonBar(
+                  alignment: MainAxisAlignment.center,
+                  children: [
+                    ElevatedButton(
+                      onPressed: () {
+                        setState(() {
+                          streaming = !streaming;
+                          mes = 'nothing yet';
+                        });
+                      },
+                      child: Text(streaming ? 'Stop' : 'Start'),
+                    ),
+                  ],
+                ),
               ],
             );
           } else {
-            return Center(child: CircularProgressIndicator());
+            return const Center(child: CircularProgressIndicator());
           }
         },
       ),
