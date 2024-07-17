@@ -71,17 +71,23 @@ int _yuvToRgb(int y, int u, int v) {
   return 0xff000000 | (r << 16) | (g << 8) | b;
 }
 
-imglib.Image square_crop(
-    imglib.Image img, int zoom, double scrollXPercent, double scrollYPercent) {
+imglib.Image square_crop(imglib.Image img, double zoom, double scrollXPercent,
+    double scrollYPercent) {
+  // Calculate the smallest dimension of the image
   int minDimension = img.width < img.height ? img.width : img.height;
-  int size = minDimension ~/ zoom;
 
-  int scrollX = (img.width * scrollXPercent).toInt();
-  int scrollY = (img.height * scrollYPercent).toInt();
+  // Calculate the size of the crop area based on zoom
+  int size = (minDimension / zoom).toInt();
 
+  // Calculate the scroll offsets in pixels
+  int scrollX = (scrollXPercent * (img.width - size)).toInt();
+  int scrollY = (scrollYPercent * (img.height - size)).toInt();
+
+  // Calculate the initial crop coordinates
   int x = ((img.width - size) ~/ 2) + scrollX;
   int y = ((img.height - size) ~/ 2) + scrollY;
 
+  // Ensure the crop area does not exceed image boundaries
   x = x.clamp(0, img.width - size);
   y = y.clamp(0, img.height - size);
 
@@ -130,9 +136,10 @@ class _CameraScreenState extends State<CameraScreen> {
   String mes = "nothing yet";
   imglib.Image? _currimg;
   var streaming = false;
-  var zoom_factor = 1;
+  double zoom_factor = 1;
   var scrollX = 0.0, scrollY = 0.0;
-  var thres = 0.3;
+  var detected = false;
+  var conf_thres = 0.3;
 
   @override
   void initState() {
@@ -148,11 +155,17 @@ class _CameraScreenState extends State<CameraScreen> {
       _controller.startImageStream((CameraImage image) {
         if (streaming == true) {
           _frameCount++;
-          if (processing == false && isModelLoaded && _frameCount % 7 == 0) {
+
+          if (processing == false && isModelLoaded && _frameCount % 10 == 0) {
             _frameCount = 0;
             processing = true;
             _processImage(image);
           } else {
+            imglib.Image img = _convertYUV420toRGBImage(image);
+            img = square_crop(img, zoom_factor, scrollX, scrollY);
+            setState(() {
+              _currimg = imglib.copyResize(img, width: 224, height: 224);
+            });
             print('isModelLoaded: $isModelLoaded, processing: $processing');
           }
         } else {
@@ -191,16 +204,18 @@ class _CameraScreenState extends State<CameraScreen> {
     print(
         'Predicting time: ${DateTime.now().millisecondsSinceEpoch - start_time} ms');
     print('Pose: $pose');
-    if (pose.isNotEmpty) {
+    if (pose.isNotEmpty && pose['confidence']! > conf_thres) {
       var pitch = pose['pitch']!.toStringAsFixed(2);
       var yaw = pose['yaw']!.toStringAsFixed(2);
       var roll = pose['roll']!.toStringAsFixed(2);
       setState(() {
-        _currimg = _currimg;
-        mes = 'Pitch: $pitch, Yaw: $yaw, Roll: $roll';
+        mes =
+            'Pitch: $pitch, Yaw: $yaw, Roll: $roll, Confidence: ${pose['confidence']!.toStringAsFixed(2)}';
+        detected = true;
       });
     } else {
       setState(() {
+        detected = false;
         mes = 'Detection failed';
       });
     }
@@ -209,7 +224,7 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Camera App')),
+      appBar: AppBar(title: Text('')),
       body: FutureBuilder<void>(
         future: _initializeControllerFuture,
         builder: (context, snapshot) {
@@ -218,11 +233,31 @@ class _CameraScreenState extends State<CameraScreen> {
               children: [
                 Expanded(
                   child: _currimg != null
-                      ? Image.memory(
-                          Uint8List.fromList(
-                              imglib.encodeJpg(_currimg!, quality: 10)),
-                          gaplessPlayback: true,
-                          fit: BoxFit.contain,
+                      ? Padding(
+                          padding:
+                              const EdgeInsets.all(0), // Remove any extra space
+                          child: Container(
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                  color: detected
+                                      ? Colors.green
+                                      : Colors.redAccent, // Set border color
+                                  width: 4), // Add border here
+                              borderRadius: BorderRadius.circular(
+                                  15), // Make the border rounded
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(
+                                  10), // Make the image rounded
+                              child: Image.memory(
+                                Uint8List.fromList(
+                                    imglib.encodeJpg(_currimg!, quality: 50)),
+                                gaplessPlayback: true,
+                                fit: BoxFit
+                                    .cover, // Ensure the image covers the entire space
+                              ),
+                            ),
+                          ),
                         )
                       : const Center(
                           child: SizedBox(
@@ -230,6 +265,7 @@ class _CameraScreenState extends State<CameraScreen> {
                               height: 50,
                               child: CircularProgressIndicator())),
                 ),
+                SizedBox(height: 40),
                 SizedBox(
                   height: 20,
                   child: Text(
@@ -244,14 +280,14 @@ class _CameraScreenState extends State<CameraScreen> {
                         child: Slider(
                       min: 1,
                       max: 5,
-                      divisions: 4,
+                      divisions: 10,
                       label: '$zoom_factor',
                       value: zoom_factor.toDouble(),
                       onChanged: streaming
                           ? null
                           : (value) {
                               setState(() {
-                                zoom_factor = value.toInt();
+                                zoom_factor = value;
                               });
                             },
                     )),
@@ -264,16 +300,17 @@ class _CameraScreenState extends State<CameraScreen> {
                     Text('Scroll X: $scrollX'),
                     Expanded(
                         child: Slider(
-                      min: -10.0,
-                      max: 10.0,
-                      divisions: 2,
+                      min: -1.0,
+                      max: 1.0,
+                      divisions: 20,
                       label: '$scrollX',
                       value: scrollX.toDouble(),
                       onChanged: streaming
                           ? null
                           : (value) {
                               setState(() {
-                                scrollX = value;
+                                scrollX =
+                                    double.parse(value.toStringAsFixed(1));
                               });
                             },
                     )),
@@ -286,16 +323,17 @@ class _CameraScreenState extends State<CameraScreen> {
                     Text('Scroll Y: $scrollY'),
                     Expanded(
                         child: Slider(
-                      min: -10.0,
-                      max: 10.0,
-                      divisions: 2,
+                      min: -1.0,
+                      max: 1.0,
+                      divisions: 20,
                       label: '$scrollY',
                       value: scrollY.toDouble(),
                       onChanged: streaming
                           ? null
                           : (value) {
                               setState(() {
-                                scrollY = value;
+                                scrollY =
+                                    double.parse(value.toStringAsFixed(1));
                               });
                             },
                     )),
@@ -305,20 +343,19 @@ class _CameraScreenState extends State<CameraScreen> {
                 Row(
                   children: [
                     SizedBox(width: 20),
-                    Text('Threshold: $thres'),
+                    Text('threshold: $conf_thres'),
                     Expanded(
                         child: Slider(
-                      min: 0.0,
+                      min: 0.1,
                       max: 1.0,
-                      divisions: 10,
-                      label: '$thres',
-                      value: thres.toDouble(),
+                      divisions: 9,
+                      label: '$conf_thres',
+                      value: conf_thres,
                       onChanged: streaming
                           ? null
                           : (value) {
                               setState(() {
-                                thres = value;
-                                model.setThres(thres);
+                                conf_thres = value;
                               });
                             },
                     )),
@@ -332,6 +369,7 @@ class _CameraScreenState extends State<CameraScreen> {
                       onPressed: () {
                         setState(() {
                           streaming = !streaming;
+                          detected = false;
                           mes = 'nothing yet';
                         });
                       },

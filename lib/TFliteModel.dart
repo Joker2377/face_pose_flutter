@@ -67,11 +67,12 @@ class TFliteModel {
 
       var confidence = (pitchConfidence + yawConfidence + rollConfidence) / 3;
 
-      if (confidence < threshold) {
-        return {};
-      }
-
-      return {'pitch': pitch, 'yaw': yaw, 'roll': roll};
+      return {
+        'pitch': pitch,
+        'yaw': yaw,
+        'roll': roll,
+        'confidence': confidence
+      };
     } catch (e, stackTrace) {
       print('Error in predictPose: $e');
       print('Stack trace: $stackTrace');
