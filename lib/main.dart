@@ -1,8 +1,27 @@
 import 'package:camera/camera.dart';
 import 'package:face_pose/TFLiteModel.dart';
+import 'package:face_pose/DrawAxis.dart';
 import 'package:flutter/material.dart';
 import 'dart:typed_data';
 import 'package:image/image.dart' as imglib;
+import 'dart:ui' as ui;
+import 'dart:async';
+import 'SettingPage.dart';
+
+Future<ui.Image> convertToUiImage(imglib.Image img) async {
+  final completer = Completer<ui.Image>();
+  final bytes = Uint8List.fromList(img.getBytes());
+  ui.decodeImageFromPixels(
+    bytes,
+    img.width,
+    img.height,
+    ui.PixelFormat.rgba8888,
+    (ui.Image img) {
+      completer.complete(img);
+    },
+  );
+  return completer.future;
+}
 
 imglib.Image _convertYUV420toRGBImage(CameraImage image) {
   final int width = image.width;
@@ -133,13 +152,20 @@ class _CameraScreenState extends State<CameraScreen> {
 
   int _frameCount = 0;
   var processing = false;
+  var streaming = false;
+  var rendering = true;
+
   String mes = "nothing yet";
   imglib.Image? _currimg;
-  var streaming = false;
+  ui.Image? _uiImage;
   double zoom_factor = 1;
   var scrollX = 0.0, scrollY = 0.0;
   var detected = false;
   var conf_thres = 0.3;
+
+  double? pitch = 0.0;
+  double? yaw = 0.0;
+  double? roll = 0.0;
 
   @override
   void initState() {
@@ -152,28 +178,26 @@ class _CameraScreenState extends State<CameraScreen> {
     );
     _initializeControllerFuture = _controller.initialize();
     _initializeControllerFuture.then((_) {
-      _controller.startImageStream((CameraImage image) {
-        if (streaming == true) {
-          _frameCount++;
-
-          if (processing == false && isModelLoaded && _frameCount % 10 == 0) {
-            _frameCount = 0;
-            processing = true;
-            _processImage(image);
-          } else {
-            imglib.Image img = _convertYUV420toRGBImage(image);
-            img = square_crop(img, zoom_factor, scrollX, scrollY);
-            setState(() {
-              _currimg = imglib.copyResize(img, width: 224, height: 224);
-            });
-            print('isModelLoaded: $isModelLoaded, processing: $processing');
-          }
-        } else {
+      _controller.startImageStream((CameraImage image) async {
+        if (rendering == true) {
           imglib.Image img = _convertYUV420toRGBImage(image);
           img = square_crop(img, zoom_factor, scrollX, scrollY);
-          setState(() {
-            _currimg = imglib.copyResize(img, width: 224, height: 224);
-          });
+          _currimg = imglib.copyResize(img, width: 224, height: 224);
+          if (streaming == true) {
+            var start = DateTime.now().millisecondsSinceEpoch;
+            _uiImage = await convertToUiImage(_currimg!);
+            print(
+                'Convert to ui.Image: ${DateTime.now().millisecondsSinceEpoch - start} ms');
+            _frameCount++;
+            if (processing == false && isModelLoaded && _frameCount % 10 == 0) {
+              _frameCount = 0;
+              processing = true;
+              _processImage(_currimg!);
+            } else {
+              print('isModelLoaded: $isModelLoaded, processing: $processing');
+            }
+          }
+          setState(() {});
         }
       });
     });
@@ -191,73 +215,90 @@ class _CameraScreenState extends State<CameraScreen> {
     isModelLoaded = true;
   }
 
-  Future<void> _processImage(CameraImage image) async {
+  Future<void> _processImage(imglib.Image image) async {
     int start_time = DateTime.now().millisecondsSinceEpoch;
-    imglib.Image img = _convertYUV420toRGBImage(image);
-    img = square_crop(img, zoom_factor, scrollX, scrollY);
-    _currimg = imglib.copyResize(img, width: 224, height: 224);
+
     print(
         'Processing time: ${DateTime.now().millisecondsSinceEpoch - start_time} ms');
     start_time = DateTime.now().millisecondsSinceEpoch;
-    var pose = await model.predictPose(img);
+    var pose = await model.predictPose(image);
     processing = false;
     print(
         'Predicting time: ${DateTime.now().millisecondsSinceEpoch - start_time} ms');
+    var processingTime = DateTime.now().millisecondsSinceEpoch - start_time;
     print('Pose: $pose');
     if (pose.isNotEmpty && pose['confidence']! > conf_thres) {
-      var pitch = pose['pitch']!.toStringAsFixed(2);
-      var yaw = pose['yaw']!.toStringAsFixed(2);
-      var roll = pose['roll']!.toStringAsFixed(2);
-      setState(() {
-        mes =
-            'Pitch: $pitch, Yaw: $yaw, Roll: $roll, Confidence: ${pose['confidence']!.toStringAsFixed(2)}';
-        detected = true;
-      });
+      pitch = pose['pitch'] ?? 0.0;
+      yaw = pose['yaw'] ?? 0.0;
+      roll = pose['roll'] ?? 0.0;
+
+      var pitchStr = pitch!.toStringAsFixed(2);
+      var yawStr = yaw!.toStringAsFixed(2);
+      var rollStr = roll!.toStringAsFixed(2);
+      mes =
+          'Pitch: $pitchStr, Yaw: $yawStr, Roll: $rollStr, Confidence: ${pose['confidence']!.toStringAsFixed(2)} \nProcessing time: $processingTime ms';
+      detected = true;
     } else {
-      setState(() {
-        detected = false;
-        mes = 'Detection failed';
-      });
+      detected = false;
+      mes = 'Detection failed';
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('')),
       body: FutureBuilder<void>(
         future: _initializeControllerFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.done) {
             return Column(
               children: [
+                SizedBox(
+                  height: 50,
+                ),
                 Expanded(
                   child: _currimg != null
                       ? Padding(
                           padding:
                               const EdgeInsets.all(0), // Remove any extra space
                           child: Container(
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                  color: detected
-                                      ? Colors.green
-                                      : Colors.redAccent, // Set border color
-                                  width: 4), // Add border here
-                              borderRadius: BorderRadius.circular(
-                                  15), // Make the border rounded
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(
-                                  10), // Make the image rounded
-                              child: Image.memory(
-                                Uint8List.fromList(
-                                    imglib.encodeJpg(_currimg!, quality: 50)),
-                                gaplessPlayback: true,
-                                fit: BoxFit
-                                    .cover, // Ensure the image covers the entire space
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                    color: detected && streaming
+                                        ? Colors.green
+                                        : Colors.redAccent, // Set border color
+                                    width: 4), // Add border here
+                                borderRadius: BorderRadius.circular(
+                                    15), // Make the border rounded
                               ),
-                            ),
-                          ),
+                              child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(
+                                      10), // Make the image rounded
+                                  child: _uiImage != null && streaming
+                                      ? FittedBox(
+                                          fit: BoxFit.cover,
+                                          child: ImageWithLines(
+                                            image: _uiImage!,
+                                            pitch: pitch ?? 0.0,
+                                            yaw: yaw ?? 0.0,
+                                            roll: roll ?? 0.0,
+                                            size: 150,
+                                            light: 1.0,
+                                            weight: 2.0,
+                                          ))
+                                      : Container(
+                                          width: double.infinity,
+                                          height: double.infinity,
+                                          child: FittedBox(
+                                              fit: BoxFit.cover,
+                                              child: _currimg != null
+                                                  ? Image.memory(
+                                                      Uint8List.fromList(imglib
+                                                          .encodeJpg(_currimg!,
+                                                              quality: 50)),
+                                                      gaplessPlayback: true,
+                                                    )
+                                                  : CircularProgressIndicator())))),
                         )
                       : const Center(
                           child: SizedBox(
@@ -265,13 +306,14 @@ class _CameraScreenState extends State<CameraScreen> {
                               height: 50,
                               child: CircularProgressIndicator())),
                 ),
-                SizedBox(height: 40),
+                SizedBox(height: 20),
                 SizedBox(
-                  height: 20,
+                  height: 40,
                   child: Text(
                     mes,
                   ),
                 ),
+                SizedBox(height: 10),
                 Row(
                   children: [
                     SizedBox(width: 20),
@@ -362,18 +404,74 @@ class _CameraScreenState extends State<CameraScreen> {
                     SizedBox(width: 10),
                   ],
                 ),
-                ButtonBar(
-                  alignment: MainAxisAlignment.center,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    ElevatedButton(
-                      onPressed: () {
-                        setState(() {
-                          streaming = !streaming;
-                          detected = false;
-                          mes = 'nothing yet';
-                        });
-                      },
-                      child: Text(streaming ? 'Stop' : 'Start'),
+                    ButtonBar(
+                      alignment: MainAxisAlignment.center,
+                      children: [
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor:
+                                rendering ? Colors.redAccent : Colors.green,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              if (rendering == false) {
+                                rendering = true;
+                              } else {
+                                rendering = false;
+                                streaming = false;
+                                mes = 'nothing yet';
+                              }
+                            });
+                          },
+                          child: Text(rendering ? 'Stop' : 'Stream'),
+                        ),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor:
+                                streaming ? Colors.redAccent : Colors.green,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              streaming = !streaming;
+                              detected = false;
+                              mes = 'nothing yet';
+                            });
+                          },
+                          child: Text(streaming ? 'Stop' : 'Start'),
+                        ),
+                        ElevatedButton(
+                          onPressed: !streaming
+                              ? () {
+                                  setState(() {
+                                    zoom_factor = 1;
+                                    scrollX = 0;
+                                    scrollY = 0;
+                                    conf_thres = 0.3;
+                                  });
+                                }
+                              : null,
+                          child: Text('Reset'),
+                        ),
+                        ElevatedButton(
+                          onPressed: !streaming
+                              ? () {
+                                  setState(() {
+                                    rendering = false;
+                                  });
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => SettingPage(),
+                                    ),
+                                  );
+                                }
+                              : null,
+                          child: Text('Settings'),
+                        ),
+                      ],
                     ),
                   ],
                 ),
