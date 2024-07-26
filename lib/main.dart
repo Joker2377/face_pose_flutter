@@ -6,7 +6,6 @@ import 'dart:typed_data';
 import 'package:image/image.dart' as imglib;
 import 'dart:ui' as ui;
 import 'dart:async';
-import 'SettingPage.dart';
 
 Future<ui.Image> convertToUiImage(imglib.Image img) async {
   final completer = Completer<ui.Image>();
@@ -148,19 +147,20 @@ class _CameraScreenState extends State<CameraScreen> {
   late CameraController _controller;
   late Future<void> _initializeControllerFuture;
   late TFliteModel model;
-  bool isModelLoaded = false;
 
-  int _frameCount = 0;
+  var isModelLoaded = false;
   var processing = false;
   var streaming = false;
   var rendering = true;
+  var detected = false;
 
   String mes = "nothing yet";
   imglib.Image? _currimg;
   ui.Image? _uiImage;
+  int _frameCount = 0;
+
   double zoom_factor = 1;
   var scrollX = 0.0, scrollY = 0.0;
-  var detected = false;
   var conf_thres = 0.3;
 
   double? pitch = 0.0;
@@ -251,237 +251,266 @@ class _CameraScreenState extends State<CameraScreen> {
         future: _initializeControllerFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.done) {
-            return Column(
-              children: [
-                SizedBox(
-                  height: 50,
-                ),
-                Expanded(
-                  child: _currimg != null
-                      ? Padding(
-                          padding:
-                              const EdgeInsets.all(0), // Remove any extra space
-                          child: Container(
-                              decoration: BoxDecoration(
-                                border: Border.all(
-                                    color: detected && streaming
-                                        ? Colors.green
-                                        : Colors.redAccent, // Set border color
-                                    width: 4), // Add border here
-                                borderRadius: BorderRadius.circular(
-                                    15), // Make the border rounded
-                              ),
-                              child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(
-                                      10), // Make the image rounded
-                                  child: _uiImage != null && streaming
-                                      ? FittedBox(
-                                          fit: BoxFit.cover,
-                                          child: ImageWithLines(
-                                            image: _uiImage!,
-                                            pitch: pitch ?? 0.0,
-                                            yaw: yaw ?? 0.0,
-                                            roll: roll ?? 0.0,
-                                            size: 150,
-                                            light: 1.0,
-                                            weight: 2.0,
-                                          ))
-                                      : Container(
-                                          width: double.infinity,
-                                          height: double.infinity,
-                                          child: FittedBox(
-                                              fit: BoxFit.cover,
-                                              child: _currimg != null
-                                                  ? Image.memory(
-                                                      Uint8List.fromList(imglib
-                                                          .encodeJpg(_currimg!,
-                                                              quality: 50)),
-                                                      gaplessPlayback: true,
-                                                    )
-                                                  : CircularProgressIndicator())))),
-                        )
-                      : const Center(
-                          child: SizedBox(
-                              width: 50,
-                              height: 50,
-                              child: CircularProgressIndicator())),
-                ),
-                SizedBox(height: 20),
-                SizedBox(
-                  height: 40,
-                  child: Text(
-                    mes,
-                  ),
-                ),
-                SizedBox(height: 10),
-                Row(
-                  children: [
-                    SizedBox(width: 20),
-                    Text('Zoom factor: $zoom_factor'),
-                    Expanded(
-                        child: Slider(
-                      min: 1,
-                      max: 5,
-                      divisions: 10,
-                      label: '$zoom_factor',
-                      value: zoom_factor.toDouble(),
-                      onChanged: streaming
-                          ? null
-                          : (value) {
-                              setState(() {
-                                zoom_factor = value;
-                              });
-                            },
-                    )),
-                    SizedBox(width: 10),
-                  ],
-                ),
-                Row(
-                  children: [
-                    SizedBox(width: 20),
-                    Text('Scroll X: $scrollX'),
-                    Expanded(
-                        child: Slider(
-                      min: -1.0,
-                      max: 1.0,
-                      divisions: 20,
-                      label: '$scrollX',
-                      value: scrollX.toDouble(),
-                      onChanged: streaming
-                          ? null
-                          : (value) {
-                              setState(() {
-                                scrollX =
-                                    double.parse(value.toStringAsFixed(1));
-                              });
-                            },
-                    )),
-                    SizedBox(width: 10),
-                  ],
-                ),
-                Row(
-                  children: [
-                    SizedBox(width: 20),
-                    Text('Scroll Y: $scrollY'),
-                    Expanded(
-                        child: Slider(
-                      min: -1.0,
-                      max: 1.0,
-                      divisions: 20,
-                      label: '$scrollY',
-                      value: scrollY.toDouble(),
-                      onChanged: streaming
-                          ? null
-                          : (value) {
-                              setState(() {
-                                scrollY =
-                                    double.parse(value.toStringAsFixed(1));
-                              });
-                            },
-                    )),
-                    SizedBox(width: 10),
-                  ],
-                ),
-                Row(
-                  children: [
-                    SizedBox(width: 20),
-                    Text('threshold: $conf_thres'),
-                    Expanded(
-                        child: Slider(
-                      min: 0.1,
-                      max: 1.0,
-                      divisions: 9,
-                      label: '$conf_thres',
-                      value: conf_thres,
-                      onChanged: streaming
-                          ? null
-                          : (value) {
-                              setState(() {
-                                conf_thres = value;
-                              });
-                            },
-                    )),
-                    SizedBox(width: 10),
-                  ],
-                ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    ButtonBar(
-                      alignment: MainAxisAlignment.center,
-                      children: [
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor:
-                                rendering ? Colors.redAccent : Colors.green,
-                          ),
-                          onPressed: () {
-                            setState(() {
-                              if (rendering == false) {
-                                rendering = true;
-                              } else {
-                                rendering = false;
-                                streaming = false;
-                                mes = 'nothing yet';
-                              }
-                            });
-                          },
-                          child: Text(rendering ? 'Stop' : 'Stream'),
-                        ),
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor:
-                                streaming ? Colors.redAccent : Colors.green,
-                          ),
-                          onPressed: () {
-                            setState(() {
-                              streaming = !streaming;
-                              detected = false;
-                              mes = 'nothing yet';
-                            });
-                          },
-                          child: Text(streaming ? 'Stop' : 'Start'),
-                        ),
-                        ElevatedButton(
-                          onPressed: !streaming
-                              ? () {
-                                  setState(() {
-                                    zoom_factor = 1;
-                                    scrollX = 0;
-                                    scrollY = 0;
-                                    conf_thres = 0.3;
-                                  });
-                                }
-                              : null,
-                          child: Text('Reset'),
-                        ),
-                        ElevatedButton(
-                          onPressed: !streaming
-                              ? () {
-                                  setState(() {
-                                    rendering = false;
-                                  });
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => SettingPage(),
-                                    ),
-                                  );
-                                }
-                              : null,
-                          child: Text('Settings'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
-            );
+            return _column(context);
           } else {
             return const Center(child: CircularProgressIndicator());
           }
         },
       ),
+    );
+  }
+
+  Column _column(context) {
+    return Column(
+      children: [
+        SizedBox(
+          height: 50,
+        ),
+        AspectRatio(aspectRatio: 1, child: _imageView(context)),
+        SizedBox(height: 20),
+        SizedBox(
+          height: 40,
+          child: Text(
+            mes,
+          ),
+        ),
+        SizedBox(height: 10),
+        _buttonRow(context),
+      ],
+    );
+  }
+
+  Expanded _imageView(context) {
+    return Expanded(
+      child: _currimg != null
+          ? Padding(
+              padding: const EdgeInsets.all(0), // Remove any extra space
+              child: Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                        color: detected && streaming
+                            ? Colors.green
+                            : Colors.redAccent, // Set border color
+                        width: 4), // Add border here
+                    borderRadius:
+                        BorderRadius.circular(15), // Make the border rounded
+                  ),
+                  child: ClipRRect(
+                      borderRadius:
+                          BorderRadius.circular(10), // Make the image rounded
+                      child: _uiImage != null && streaming
+                          ? FittedBox(
+                              fit: BoxFit.cover,
+                              child: ImageWithLines(
+                                image: _uiImage!,
+                                pitch: pitch ?? 0.0,
+                                yaw: yaw ?? 0.0,
+                                roll: roll ?? 0.0,
+                                size: 150,
+                                light: 1.0,
+                                weight: 2.0,
+                              ))
+                          : Container(
+                              width: double.infinity,
+                              height: double.infinity,
+                              child: FittedBox(
+                                  fit: BoxFit.cover,
+                                  child: _currimg != null
+                                      ? Image.memory(
+                                          Uint8List.fromList(imglib.encodeJpg(
+                                              _currimg!,
+                                              quality: 50)),
+                                          gaplessPlayback: true,
+                                        )
+                                      : CircularProgressIndicator())))),
+            )
+          : const Center(
+              child: SizedBox(
+                  width: 50, height: 50, child: CircularProgressIndicator())),
+    );
+  }
+
+  Row _sliderZoomFactor(context) {
+    return Row(
+      children: [
+        SizedBox(width: 20),
+        Text('Zoom factor: $zoom_factor'),
+        Expanded(
+            child: Slider(
+          min: 1,
+          max: 5,
+          divisions: 20,
+          label: '$zoom_factor',
+          value: zoom_factor.toDouble(),
+          onChanged: streaming
+              ? null
+              : (value) {
+                  setState(() {
+                    zoom_factor = value;
+                  });
+                },
+        )),
+        SizedBox(width: 10),
+      ],
+    );
+  }
+
+  Row _sliderScrollX(context) {
+    return Row(
+      children: [
+        SizedBox(width: 20),
+        Text('Scroll X: $scrollX'),
+        Expanded(
+            child: Slider(
+          min: -1.0,
+          max: 1.0,
+          divisions: 20,
+          label: '$scrollX',
+          value: scrollX.toDouble(),
+          onChanged: streaming
+              ? null
+              : (value) {
+                  setState(() {
+                    scrollX = double.parse(value.toStringAsFixed(1));
+                  });
+                },
+        )),
+        SizedBox(width: 10),
+      ],
+    );
+  }
+
+  Row _sliderScrollY(context) {
+    return Row(
+      children: [
+        SizedBox(width: 20),
+        Text('Scroll Y: $scrollY'),
+        Expanded(
+            child: Slider(
+          min: -1.0,
+          max: 1.0,
+          divisions: 20,
+          label: '$scrollY',
+          value: scrollY.toDouble(),
+          onChanged: streaming
+              ? null
+              : (value) {
+                  setState(() {
+                    scrollY = double.parse(value.toStringAsFixed(1));
+                  });
+                },
+        )),
+        SizedBox(width: 10),
+      ],
+    );
+  }
+
+  Row _sliderThres(context) {
+    return Row(
+      children: [
+        SizedBox(width: 20),
+        Text('threshold: $conf_thres'),
+        Expanded(
+            child: Slider(
+          min: 0.1,
+          max: 1.0,
+          divisions: 9,
+          label: '$conf_thres',
+          value: conf_thres,
+          onChanged: streaming
+              ? null
+              : (value) {
+                  setState(() {
+                    conf_thres = value;
+                  });
+                },
+        )),
+        SizedBox(width: 10),
+      ],
+    );
+  }
+
+  Row _buttonRow(context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        ButtonBar(
+          alignment: MainAxisAlignment.center,
+          children: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: rendering ? Colors.redAccent : Colors.green,
+              ),
+              onPressed: () {
+                setState(() {
+                  if (rendering == false) {
+                    rendering = true;
+                  } else {
+                    rendering = false;
+                    streaming = false;
+                    mes = 'nothing yet';
+                  }
+                });
+              },
+              child: Text(rendering ? 'Off' : 'On'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: streaming ? Colors.redAccent : Colors.green,
+              ),
+              onPressed: rendering
+                  ? () {
+                      setState(() {
+                        streaming = !streaming;
+                        detected = false;
+                        mes = 'nothing yet';
+                      });
+                    }
+                  : null,
+              child: Text(streaming ? 'Stop' : 'Start'),
+            ),
+            ElevatedButton(
+                onPressed: () {
+                  showModalBottomSheet(
+                      context: context,
+                      builder: (context) {
+                        return Container(
+                          width: double.infinity,
+                          height: 250,
+                          child: Center(
+                            child: Column(
+                              children: [
+                                Expanded(child: _sliderZoomFactor(context)),
+                                Expanded(child: _sliderScrollX(context)),
+                                Expanded(child: _sliderScrollY(context)),
+                                Expanded(child: _sliderThres(context)),
+                                Expanded(
+                                    child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    ElevatedButton(
+                                      onPressed: () {
+                                        setState(() {
+                                          zoom_factor = 1;
+                                          scrollX = 0;
+                                          scrollY = 0;
+                                          conf_thres = 0.3;
+                                        });
+                                      },
+                                      child: Text('Reset'),
+                                    )
+                                  ],
+                                ))
+                              ],
+                            ),
+                          ),
+                        );
+                      });
+                },
+                child: Text("open"))
+          ],
+        ),
+      ],
     );
   }
 }
