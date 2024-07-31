@@ -1,7 +1,10 @@
+import 'dart:ffi';
+
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:image/image.dart' as imglib;
 import 'dart:typed_data';
 import 'dart:math' as math;
+import 'package:flutter_isolate/flutter_isolate.dart';
 
 class TFliteModel {
   final String modelPath = 'assets/final0526.tflite';
@@ -10,6 +13,10 @@ class TFliteModel {
 
   void setThres(double thres) {
     threshold = thres;
+  }
+
+  void assignInterpreterFromAdress(int address) {
+    _interpreter = Interpreter.fromAddress(address);
   }
 
   Future<void> loadModel() async {
@@ -22,62 +29,100 @@ class TFliteModel {
     }
   }
 
+  Future<Map<String, double>> rawPredictPose(
+      List<List<List<List<double>>>> inputData) async {
+    if (_interpreter == null) {
+      print('Interpreter is not loaded');
+      return {};
+    }
+
+    var outputs = <int, Object>{};
+
+    for (int i = 0; i < _interpreter!.getOutputTensors().length; i++) {
+      var tmp = List.empty(growable: true);
+      tmp.add(Float32List(_interpreter!.getOutputTensor(i).numElements()));
+      outputs[i] = tmp;
+    }
+    print("Running inference");
+    _interpreter!.runForMultipleInputs([inputData], outputs);
+    print("Inference done");
+    var out = outputs;
+    var outputData1 = out[0];
+    var outputData2 = out[1];
+    var outputData3 = out[2];
+
+    outputData1 = (outputData1 as List).first as List<double>;
+    outputData2 = (outputData2 as List).first as List<double>;
+    outputData3 = (outputData3 as List).first as List<double>;
+
+    outputData1 = outputData1 as List<double>;
+    outputData2 = outputData2 as List<double>;
+    outputData3 = outputData3 as List<double>;
+
+    var rollSoftmax = softmax(outputData1);
+    var pitchSoftmax = softmax(outputData2);
+    var yawSoftmax = softmax(outputData3);
+
+    var bins = List.generate(66, (i) => (-99 + i * 3).toDouble());
+    var pitch = dotProduct(pitchSoftmax, bins);
+    var yaw = dotProduct(yawSoftmax, bins);
+    var roll = dotProduct(rollSoftmax, bins);
+
+    var pitchConfidence = sumTop3(pitchSoftmax);
+    var yawConfidence = sumTop3(yawSoftmax);
+    var rollConfidence = sumTop3(rollSoftmax);
+
+    var confidence = (pitchConfidence + yawConfidence + rollConfidence) / 3;
+
+    return {'pitch': pitch, 'yaw': yaw, 'roll': roll, 'confidence': confidence};
+  }
+
   Future<Map<String, double>> predictPose(imglib.Image image) async {
     if (_interpreter == null) {
       print('Interpreter is not loaded');
       return {};
     }
 
-    try {
-      var inputData = transform(image);
-      var outputs = <int, Object>{};
-      for (int i = 0; i < _interpreter!.getOutputTensors().length; i++) {
-        var tmp = List.empty(growable: true);
-        tmp.add(Float32List(_interpreter!.getOutputTensor(i).numElements()));
-        outputs[i] = tmp;
-      }
-      print("Running inference");
-      _interpreter!.runForMultipleInputs([inputData], outputs);
-      print("Inference done");
-      var out = outputs;
-      var outputData1 = out[0];
-      var outputData2 = out[1];
-      var outputData3 = out[2];
+    var inputData = transform(image);
+    var outputs = <int, Object>{};
 
-      outputData1 = (outputData1 as List).first as List<double>;
-      outputData2 = (outputData2 as List).first as List<double>;
-      outputData3 = (outputData3 as List).first as List<double>;
-
-      outputData1 = outputData1 as List<double>;
-      outputData2 = outputData2 as List<double>;
-      outputData3 = outputData3 as List<double>;
-
-      var rollSoftmax = softmax(outputData1);
-      var pitchSoftmax = softmax(outputData2);
-      var yawSoftmax = softmax(outputData3);
-
-      var bins = List.generate(66, (i) => (-99 + i * 3).toDouble());
-      var pitch = dotProduct(pitchSoftmax, bins);
-      var yaw = dotProduct(yawSoftmax, bins);
-      var roll = dotProduct(rollSoftmax, bins);
-
-      var pitchConfidence = sumTop3(pitchSoftmax);
-      var yawConfidence = sumTop3(yawSoftmax);
-      var rollConfidence = sumTop3(rollSoftmax);
-
-      var confidence = (pitchConfidence + yawConfidence + rollConfidence) / 3;
-
-      return {
-        'pitch': pitch,
-        'yaw': yaw,
-        'roll': roll,
-        'confidence': confidence
-      };
-    } catch (e, stackTrace) {
-      print('Error in predictPose: $e');
-      print('Stack trace: $stackTrace');
-      return {};
+    for (int i = 0; i < _interpreter!.getOutputTensors().length; i++) {
+      var tmp = List.empty(growable: true);
+      tmp.add(Float32List(_interpreter!.getOutputTensor(i).numElements()));
+      outputs[i] = tmp;
     }
+    print("Running inference");
+    _interpreter!.runForMultipleInputs([inputData], outputs);
+    print("Inference done");
+    var out = outputs;
+    var outputData1 = out[0];
+    var outputData2 = out[1];
+    var outputData3 = out[2];
+
+    outputData1 = (outputData1 as List).first as List<double>;
+    outputData2 = (outputData2 as List).first as List<double>;
+    outputData3 = (outputData3 as List).first as List<double>;
+
+    outputData1 = outputData1 as List<double>;
+    outputData2 = outputData2 as List<double>;
+    outputData3 = outputData3 as List<double>;
+
+    var rollSoftmax = softmax(outputData1);
+    var pitchSoftmax = softmax(outputData2);
+    var yawSoftmax = softmax(outputData3);
+
+    var bins = List.generate(66, (i) => (-99 + i * 3).toDouble());
+    var pitch = dotProduct(pitchSoftmax, bins);
+    var yaw = dotProduct(yawSoftmax, bins);
+    var roll = dotProduct(rollSoftmax, bins);
+
+    var pitchConfidence = sumTop3(pitchSoftmax);
+    var yawConfidence = sumTop3(yawSoftmax);
+    var rollConfidence = sumTop3(rollSoftmax);
+
+    var confidence = (pitchConfidence + yawConfidence + rollConfidence) / 3;
+
+    return {'pitch': pitch, 'yaw': yaw, 'roll': roll, 'confidence': confidence};
   }
 
   void dispose() {
@@ -133,7 +178,7 @@ class TFliteModel {
     return reshapedData;
   }
 
-  // perform transform -> (1, 3, 224, 224)
+  // perform transform -> (1*3*224*224)
   static Float32List _imageToByteListFloat32(
       imglib.Image image, int inputSize, List<double> mean, List<double> std) {
     var convertedBytes = Float32List(1 * 3 * inputSize * inputSize);
