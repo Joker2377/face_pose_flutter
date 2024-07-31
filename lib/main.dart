@@ -184,17 +184,12 @@ class _CameraScreenState extends State<CameraScreen> {
           img = square_crop(img, zoom_factor, scrollX, scrollY);
           _currimg = imglib.copyResize(img, width: 224, height: 224);
           if (streaming == true) {
-            var start = DateTime.now().millisecondsSinceEpoch;
             _uiImage = await convertToUiImage(_currimg!);
-            print(
-                'Convert to ui.Image: ${DateTime.now().millisecondsSinceEpoch - start} ms');
             _frameCount++;
             if (processing == false && isModelLoaded && _frameCount % 10 == 0) {
               _frameCount = 0;
               processing = true;
               _processImage(_currimg!);
-            } else {
-              print('isModelLoaded: $isModelLoaded, processing: $processing');
             }
           }
           setState(() {});
@@ -217,15 +212,10 @@ class _CameraScreenState extends State<CameraScreen> {
 
   Future<void> _processImage(imglib.Image image) async {
     int start_time = DateTime.now().millisecondsSinceEpoch;
-
-    print(
-        'Processing time: ${DateTime.now().millisecondsSinceEpoch - start_time} ms');
-    start_time = DateTime.now().millisecondsSinceEpoch;
     var pose = await model.predictPose(image);
     processing = false;
-    print(
-        'Predicting time: ${DateTime.now().millisecondsSinceEpoch - start_time} ms');
     var processingTime = DateTime.now().millisecondsSinceEpoch - start_time;
+    print('Processing time: $processingTime ms');
     print('Pose: $pose');
     if (pose.isNotEmpty && pose['confidence']! > conf_thres) {
       pitch = pose['pitch'] ?? 0.0;
@@ -266,7 +256,7 @@ class _CameraScreenState extends State<CameraScreen> {
         SizedBox(
           height: 50,
         ),
-        AspectRatio(aspectRatio: 1, child: _imageView(context)),
+        _imageView(context),
         SizedBox(height: 20),
         SizedBox(
           height: 40,
@@ -280,8 +270,9 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
-  Expanded _imageView(context) {
-    return Expanded(
+  AspectRatio _imageView(context) {
+    return AspectRatio(
+      aspectRatio: 1,
       child: _currimg != null
           ? Padding(
               padding: const EdgeInsets.all(0), // Remove any extra space
@@ -330,7 +321,7 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
-  Row _sliderZoomFactor(context) {
+  Row _sliderZoomFactor(context, setState) {
     return Row(
       children: [
         SizedBox(width: 20),
@@ -342,7 +333,7 @@ class _CameraScreenState extends State<CameraScreen> {
           divisions: 20,
           label: '$zoom_factor',
           value: zoom_factor.toDouble(),
-          onChanged: streaming
+          onChanged: !rendering
               ? null
               : (value) {
                   setState(() {
@@ -355,7 +346,7 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
-  Row _sliderScrollX(context) {
+  Row _sliderScrollX(context, setState) {
     return Row(
       children: [
         SizedBox(width: 20),
@@ -367,7 +358,7 @@ class _CameraScreenState extends State<CameraScreen> {
           divisions: 20,
           label: '$scrollX',
           value: scrollX.toDouble(),
-          onChanged: streaming
+          onChanged: !rendering
               ? null
               : (value) {
                   setState(() {
@@ -380,7 +371,7 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
-  Row _sliderScrollY(context) {
+  Row _sliderScrollY(context, setState) {
     return Row(
       children: [
         SizedBox(width: 20),
@@ -392,7 +383,7 @@ class _CameraScreenState extends State<CameraScreen> {
           divisions: 20,
           label: '$scrollY',
           value: scrollY.toDouble(),
-          onChanged: streaming
+          onChanged: !rendering
               ? null
               : (value) {
                   setState(() {
@@ -405,7 +396,7 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
-  Row _sliderThres(context) {
+  Row _sliderThres(context, setState) {
     return Row(
       children: [
         SizedBox(width: 20),
@@ -417,7 +408,7 @@ class _CameraScreenState extends State<CameraScreen> {
           divisions: 9,
           label: '$conf_thres',
           value: conf_thres,
-          onChanged: streaming
+          onChanged: !rendering
               ? null
               : (value) {
                   setState(() {
@@ -470,44 +461,58 @@ class _CameraScreenState extends State<CameraScreen> {
               child: Text(streaming ? 'Stop' : 'Start'),
             ),
             ElevatedButton(
-                onPressed: () {
-                  showModalBottomSheet(
-                      context: context,
-                      builder: (context) {
-                        return Container(
-                          width: double.infinity,
-                          height: 250,
-                          child: Center(
-                            child: Column(
-                              children: [
-                                Expanded(child: _sliderZoomFactor(context)),
-                                Expanded(child: _sliderScrollX(context)),
-                                Expanded(child: _sliderScrollY(context)),
-                                Expanded(child: _sliderThres(context)),
-                                Expanded(
-                                    child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    ElevatedButton(
-                                      onPressed: () {
-                                        setState(() {
-                                          zoom_factor = 1;
-                                          scrollX = 0;
-                                          scrollY = 0;
-                                          conf_thres = 0.3;
-                                        });
-                                      },
-                                      child: Text('Reset'),
-                                    )
-                                  ],
-                                ))
-                              ],
-                            ),
-                          ),
-                        );
-                      });
-                },
-                child: Text("open"))
+                onPressed: rendering
+                    ? () {
+                        showModalBottomSheet(
+                            context: context,
+                            builder: (context) {
+                              return StatefulBuilder(builder:
+                                  (BuildContext context, StateSetter setState) {
+                                return Container(
+                                  width: double.infinity,
+                                  height: 250,
+                                  child: Center(
+                                    child: Column(
+                                      children: [
+                                        Expanded(
+                                            child: _sliderZoomFactor(
+                                                context, setState)),
+                                        Expanded(
+                                            child: _sliderScrollX(
+                                                context, setState)),
+                                        Expanded(
+                                            child: _sliderScrollY(
+                                                context, setState)),
+                                        Expanded(
+                                            child: _sliderThres(
+                                                context, setState)),
+                                        Expanded(
+                                            child: Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            ElevatedButton(
+                                              onPressed: () {
+                                                setState(() {
+                                                  zoom_factor = 1;
+                                                  scrollX = 0;
+                                                  scrollY = 0;
+                                                  conf_thres = 0.3;
+                                                });
+                                              },
+                                              child: Text('Reset'),
+                                            )
+                                          ],
+                                        ))
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              });
+                            });
+                      }
+                    : null,
+                child: Text("Cam Set"))
           ],
         ),
       ],
