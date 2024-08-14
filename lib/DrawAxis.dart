@@ -117,7 +117,7 @@ class LinePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) {
-    return true;
+  bool shouldRepaint(covariant LinePainter oldDelegate) {
+    return oldDelegate.image != image;
   }
 }

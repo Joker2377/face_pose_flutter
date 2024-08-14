@@ -2,7 +2,6 @@ import 'dart:isolate';
 import 'package:image/image.dart' as imglib;
 import 'package:face_pose/TFLiteModel.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
-import 'package:face_pose/TFLiteModel.dart';
 import 'package:flutter_isolate/flutter_isolate.dart';
 
 void isolateEntry(SendPort sendPort) async {

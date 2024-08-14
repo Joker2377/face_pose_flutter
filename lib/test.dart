@@ -148,7 +148,8 @@ class CameraScreen extends StatefulWidget {
   _CameraScreenState createState() => _CameraScreenState();
 }
 
-class _CameraScreenState extends State<CameraScreen> {
+class _CameraScreenState extends State<CameraScreen>
+    with WidgetsBindingObserver {
   late CameraController _controller;
   late Future<void> _initializeControllerFuture;
 
@@ -174,7 +175,19 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance!.addObserver(this);
     _loadModel();
+    initCameraController();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    manager.dispose();
+    super.dispose();
+  }
+
+  void initCameraController() {
     _controller = CameraController(
       widget.camera,
       ResolutionPreset.low,
@@ -203,10 +216,20 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   @override
-  void dispose() {
-    _controller.dispose();
-    manager.dispose();
-    super.dispose();
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final CameraController? cameraController = _controller;
+    if (cameraController == null || !cameraController.value.isInitialized) {
+      return;
+    }
+
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      cameraController.dispose();
+      rendering = false;
+    } else if (state == AppLifecycleState.resumed) {
+      initCameraController();
+      rendering = true;
+    }
   }
 
   Future<void> _loadModel() async {
