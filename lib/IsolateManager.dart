@@ -22,7 +22,7 @@ void isolateEntry(SendPort sendPort) async {
       final address = message['address'] as int;
       final replyPort = message['responsePort'] as SendPort;
       final model = TFliteModel();
-      model.assignInterpreterFromAdress(address);
+      model.assignInterpreterFromAddress(address);
       final result =
           await model.rawPredictPose(inputData) as Map<String, double>;
       print('Isolate got result: ${result.values}');

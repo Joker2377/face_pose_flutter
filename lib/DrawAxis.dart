@@ -75,7 +75,6 @@ class LinePainter extends CustomPainter {
     /// Returns:
     /// This method does not return anything.
     print('Painting axis');
-    canvas.drawImage(image, Offset.zero, Paint());
 
     double pitchRad = pitch * pi / 180;
     double yawRad = -yaw * pi / 180;
@@ -118,6 +117,8 @@ class LinePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant LinePainter oldDelegate) {
-    return oldDelegate.image != image;
+    return oldDelegate.pitch != pitch ||
+        oldDelegate.yaw != yaw ||
+        oldDelegate.roll != roll;
   }
 }

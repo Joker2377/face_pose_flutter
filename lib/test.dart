@@ -8,6 +8,7 @@ import 'dart:typed_data';
 import 'package:image/image.dart' as imglib;
 import 'dart:ui' as ui;
 import 'dart:async';
+import 'package:flutter/services.dart';
 
 Future<ui.Image> convertToUiImage(imglib.Image img) async {
   final completer = Completer<ui.Image>();
@@ -118,6 +119,7 @@ IsolateManager manager = IsolateManager();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   await manager.start();
   final cameras = await availableCameras();
   final frontCamera = cameras.firstWhere(
@@ -156,7 +158,7 @@ class _CameraScreenState extends State<CameraScreen>
   var isModelLoaded = false;
   var processing = false;
   var streaming = false;
-  var rendering = true;
+  var rendering = false;
   var detected = false;
 
   String mes = "nothing yet";
@@ -165,6 +167,8 @@ class _CameraScreenState extends State<CameraScreen>
   int _frameCount = 0;
 
   double zoom_factor = 1;
+  var _minZoom = 1.0;
+  var _maxZoom = 5.0;
   var scrollX = 0.0, scrollY = 0.0;
   var conf_thres = 0.3;
 
@@ -172,12 +176,15 @@ class _CameraScreenState extends State<CameraScreen>
   double? yaw = 0.0;
   double? roll = 0.0;
 
+  var detect_frame = 10;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance!.addObserver(this);
     _loadModel();
     initCameraController();
+    initZoomLevel();
   }
 
   @override
@@ -187,7 +194,12 @@ class _CameraScreenState extends State<CameraScreen>
     super.dispose();
   }
 
-  void initCameraController() {
+  void initZoomLevel() async {
+    _minZoom = await _controller.getMinZoomLevel();
+    _maxZoom = await _controller.getMaxZoomLevel();
+  }
+
+  void initCameraController() async {
     _controller = CameraController(
       widget.camera,
       ResolutionPreset.low,
@@ -195,6 +207,11 @@ class _CameraScreenState extends State<CameraScreen>
     );
     _initializeControllerFuture = _controller.initialize();
     _initializeControllerFuture.then((_) {
+      if (!rendering) {
+        setState(() {
+          rendering = true;
+        });
+      }
       _controller.startImageStream((CameraImage image) async {
         if (rendering == true) {
           imglib.Image img = _convertYUV420toRGBImage(image);
@@ -203,13 +220,15 @@ class _CameraScreenState extends State<CameraScreen>
           if (streaming == true) {
             _uiImage = await convertToUiImage(_currimg!);
             _frameCount++;
-            if (processing == false && isModelLoaded && _frameCount % 10 == 0) {
+            if (processing == false &&
+                isModelLoaded &&
+                _frameCount % detect_frame == 0) {
               _frameCount = 0;
               processing = true;
               _processImage(_currimg!);
+              setState(() {});
             }
           }
-          setState(() {});
         }
       });
     });
@@ -241,6 +260,7 @@ class _CameraScreenState extends State<CameraScreen>
     int start_time = DateTime.now().millisecondsSinceEpoch;
     var pose = await manager.predictPose(image);
     processing = false;
+    if (streaming == false) return;
     var processingTime = DateTime.now().millisecondsSinceEpoch - start_time;
     print('Processing time: $processingTime ms');
     print('Pose: $pose');
@@ -284,6 +304,18 @@ class _CameraScreenState extends State<CameraScreen>
           height: 50,
         ),
         _imageView(context),
+        SizedBox(
+          height: 20,
+          child: Text('Input Image'),
+        ),
+        Container(
+            height: 100,
+            child: _currimg != null && streaming
+                ? Image.memory(
+                    Uint8List.fromList(
+                        imglib.encodeJpg(_currimg!, quality: 50)),
+                  )
+                : Text('No image')),
         SizedBox(height: 20),
         SizedBox(
           height: 40,
@@ -300,7 +332,7 @@ class _CameraScreenState extends State<CameraScreen>
   AspectRatio _imageView(context) {
     return AspectRatio(
       aspectRatio: 1,
-      child: _currimg != null
+      child: rendering
           ? Padding(
               padding: const EdgeInsets.all(0), // Remove any extra space
               child: Container(
@@ -317,34 +349,49 @@ class _CameraScreenState extends State<CameraScreen>
                       borderRadius:
                           BorderRadius.circular(10), // Make the image rounded
                       child: _uiImage != null && streaming
-                          ? FittedBox(
-                              fit: BoxFit.cover,
-                              child: ImageWithLines(
-                                image: _uiImage!,
-                                pitch: pitch ?? 0.0,
-                                yaw: yaw ?? 0.0,
-                                roll: roll ?? 0.0,
-                                size: 150,
-                                light: 1.0,
-                                weight: 2.0,
-                              ))
-                          : Container(
-                              width: double.infinity,
-                              height: double.infinity,
-                              child: FittedBox(
-                                  fit: BoxFit.cover,
-                                  child: _currimg != null
-                                      ? Image.memory(
-                                          Uint8List.fromList(imglib.encodeJpg(
-                                              _currimg!,
-                                              quality: 50)),
-                                          gaplessPlayback: true,
-                                        )
-                                      : CircularProgressIndicator())))),
+                          ? _imageStream(context, setState)
+                          : _imagePreview(context, setState))),
             )
           : const Center(
               child: SizedBox(
                   width: 50, height: 50, child: CircularProgressIndicator())),
+    );
+  }
+
+  Stack _imageStream(context, setState) {
+    return Stack(children: [
+      _imagePreview(context, setState),
+      Container(
+          color: Colors.transparent,
+          child: Center(
+              child: ImageWithLines(
+            image: _uiImage!,
+            pitch: pitch ?? 0.0,
+            yaw: yaw ?? 0.0,
+            roll: roll ?? 0.0,
+            size: 200,
+            light: 1.0,
+            weight: 4.0,
+          ))),
+    ]);
+  }
+
+  Container _imagePreview(context, setState) {
+    var size = MediaQuery.of(context).size.width;
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      child: SizedBox(
+          width: size,
+          height: size,
+          child: FittedBox(
+            fit: BoxFit.fitWidth,
+            child: SizedBox(
+              width: size,
+              height: size * _controller.value.aspectRatio,
+              child: CameraPreview(_controller),
+            ),
+          )),
     );
   }
 
@@ -355,9 +402,9 @@ class _CameraScreenState extends State<CameraScreen>
         Text('Zoom factor: $zoom_factor'),
         Expanded(
             child: Slider(
-          min: 1,
-          max: 5,
-          divisions: 20,
+          min: _minZoom,
+          max: _maxZoom,
+          divisions: (_maxZoom - _minZoom).toInt() * 10,
           label: '$zoom_factor',
           value: zoom_factor.toDouble(),
           onChanged: !rendering
@@ -365,6 +412,7 @@ class _CameraScreenState extends State<CameraScreen>
               : (value) {
                   setState(() {
                     zoom_factor = value;
+                    _controller.setZoomLevel(zoom_factor);
                   });
                 },
         )),
@@ -505,14 +553,12 @@ class _CameraScreenState extends State<CameraScreen>
                                             child: _sliderZoomFactor(
                                                 context, setState)),
                                         Expanded(
-                                            child: _sliderScrollX(
-                                                context, setState)),
-                                        Expanded(
-                                            child: _sliderScrollY(
-                                                context, setState)),
-                                        Expanded(
                                             child: _sliderThres(
                                                 context, setState)),
+                                        Expanded(
+                                          child: _sliderDetectFrame(
+                                              context, setState),
+                                        ),
                                         Expanded(
                                             child: Row(
                                           mainAxisAlignment:
@@ -542,6 +588,31 @@ class _CameraScreenState extends State<CameraScreen>
                 child: Text("Cam Set"))
           ],
         ),
+      ],
+    );
+  }
+
+  Row _sliderDetectFrame(context, setState) {
+    return Row(
+      children: [
+        SizedBox(width: 20),
+        Text('refresh frame: $detect_frame'),
+        Expanded(
+            child: Slider(
+          min: 5,
+          max: 30,
+          divisions: 25,
+          label: '${detect_frame.toInt()}',
+          value: detect_frame.toDouble(),
+          onChanged: !rendering
+              ? null
+              : (value) {
+                  setState(() {
+                    detect_frame = value.toInt();
+                  });
+                },
+        )),
+        SizedBox(width: 10),
       ],
     );
   }

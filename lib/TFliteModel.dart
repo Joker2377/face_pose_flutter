@@ -15,7 +15,7 @@ class TFliteModel {
     threshold = thres;
   }
 
-  void assignInterpreterFromAdress(int address) {
+  void assignInterpreterFromAddress(int address) {
     _interpreter = Interpreter.fromAddress(address);
   }
 
