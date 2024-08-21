@@ -1,10 +1,7 @@
-import 'dart:ffi';
-
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:image/image.dart' as imglib;
 import 'dart:typed_data';
 import 'dart:math' as math;
-import 'package:flutter_isolate/flutter_isolate.dart';
 
 class TFliteModel {
   final String modelPath = 'assets/final0526.tflite';

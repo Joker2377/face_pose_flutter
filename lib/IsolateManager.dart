@@ -1,6 +1,6 @@
 import 'dart:isolate';
 import 'package:image/image.dart' as imglib;
-import 'package:face_pose/TFLiteModel.dart';
+import 'package:face_pose/utils/TFLiteModel.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:flutter_isolate/flutter_isolate.dart';
 
@@ -32,6 +32,12 @@ void isolateEntry(SendPort sendPort) async {
 }
 
 class IsolateManager {
+  static final IsolateManager _instance = IsolateManager._internal();
+
+  IsolateManager._internal();
+
+  factory IsolateManager() => _instance;
+
   FlutterIsolate? _isolate;
   SendPort? _sendPort;
   ReceivePort? _receivePort = ReceivePort();

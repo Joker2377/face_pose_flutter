@@ -16,7 +16,7 @@ Future<ui.Image> convertToUiImage(imglib.Image img) async {
 }
 
 class ImageWithLines extends StatelessWidget {
-  final ui.Image image;
+  final ui.Image? image;
   final double pitch;
   final double yaw;
   final double roll;
@@ -42,13 +42,13 @@ class ImageWithLines extends StatelessWidget {
   Widget build(BuildContext context) {
     return CustomPaint(
       painter: LinePainter(image, pitch, yaw, roll, x, y, size, light, weight),
-      size: Size(image.width.toDouble(), image.height.toDouble()),
+      size: Size(224, 224),
     );
   }
 }
 
 class LinePainter extends CustomPainter {
-  final ui.Image image;
+  final ui.Image? image;
   final double pitch;
   final double yaw;
   final double roll;
