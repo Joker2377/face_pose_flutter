@@ -1,19 +1,6 @@
 import 'dart:math';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:image/image.dart' as imglib;
-import 'dart:typed_data';
-import 'dart:async';
-
-Future<ui.Image> convertToUiImage(imglib.Image img) async {
-  final completer = Completer<ui.Image>();
-  final bytes = Uint8List.fromList(imglib.encodePng(img));
-  ui.decodeImageFromList(bytes, (image) {
-    completer.complete(image);
-  });
-  return completer.future;
-}
 
 class ImageWithLines extends StatelessWidget {
   final ui.Image? image;

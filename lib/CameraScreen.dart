@@ -6,9 +6,9 @@ import 'package:face_pose/utils/tool.dart';
 import 'package:flutter/material.dart';
 import 'dart:typed_data';
 import 'package:image/image.dart' as imglib;
-import 'dart:ui' as ui;
 import 'dart:async';
 import 'package:flutter/services.dart';
+import 'package:fl_chart/fl_chart.dart';
 
 IsolateManager manager = IsolateManager();
 // static manager
@@ -59,6 +59,7 @@ class _CameraScreenState extends State<CameraScreen>
   var streaming = false;
   var rendering = true;
   var detected = false;
+  var debugIsHidden = false;
 
   String mes = "nothing yet";
   imglib.Image? _currimg;
@@ -73,6 +74,10 @@ class _CameraScreenState extends State<CameraScreen>
   double? pitch = 0.0;
   double? yaw = 0.0;
   double? roll = 0.0;
+
+  double base_pitch = 0.0;
+  double base_yaw = 0.0;
+  double base_roll = 0.0;
 
   var detect_frame = 10;
 
@@ -157,6 +162,7 @@ class _CameraScreenState extends State<CameraScreen>
     } else if (state == AppLifecycleState.resumed) {
       if (cameraController != null) {
         _cameraService.initCamera(widget.camera);
+        startImageStream();
       }
       rendering = true;
     }
@@ -170,6 +176,18 @@ class _CameraScreenState extends State<CameraScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      floatingActionButton: FloatingActionButton(
+        onPressed: rendering
+            ? () {
+                showModalBottomSheet(
+                    context: context,
+                    builder: (context) {
+                      return _bottomSheet(context);
+                    });
+              }
+            : null,
+        child: Icon(Icons.settings),
+      ),
       body: FutureBuilder<void>(
         future: _cameraService.initializeControllerFuture,
         builder: (context, snapshot) {
@@ -190,27 +208,168 @@ class _CameraScreenState extends State<CameraScreen>
           height: 50,
         ),
         _imageView(context),
-        SizedBox(
-          height: 20,
-          child: Text('Input Image'),
-        ),
-        Container(
-            height: 100,
-            child: _currimg != null && streaming
-                ? Image.memory(
-                    Uint8List.fromList(
-                        imglib.encodeJpg(_currimg!, quality: 50)),
-                  )
-                : Text('No image')),
+        Padding(
+            padding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+            child: _buttonRow(context)),
+        Visibility(
+            visible: !debugIsHidden,
+            replacement: SizedBox.shrink(),
+            child: Column(children: [
+              SizedBox(
+                height: 20,
+                child: Text('Input Image'),
+              ),
+              Container(
+                  height: 100,
+                  child: _currimg != null && streaming
+                      ? Image.memory(
+                          Uint8List.fromList(
+                              imglib.encodeJpg(_currimg!, quality: 50)),
+                        )
+                      : Text('No image')),
+              SizedBox(height: 20),
+              SizedBox(
+                height: 40,
+                child: Text(
+                  mes,
+                ),
+              )
+            ])),
         SizedBox(height: 20),
-        SizedBox(
-          height: 40,
-          child: Text(
-            mes,
-          ),
-        ),
-        SizedBox(height: 10),
-        _buttonRow(context),
+        Row(children: [
+          Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
+              child: Visibility(
+                  visible: debugIsHidden,
+                  child: Container(
+                    height: 250,
+                    width: 200,
+                    child: BarChart(
+                      BarChartData(
+                        gridData: FlGridData(
+                          show: true,
+                          drawVerticalLine: false,
+                          getDrawingHorizontalLine: (value) {
+                            return FlLine(
+                              color: Colors.white.withOpacity(0.2),
+                              strokeWidth: 1,
+                            );
+                          },
+                        ),
+                        titlesData: FlTitlesData(
+                          show: true,
+                          topTitles: SideTitles(showTitles: false),
+                          bottomTitles: SideTitles(
+                            showTitles: true,
+                            getTextStyles: (context, value) => const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14),
+                            margin: 12,
+                            getTitles: (value) {
+                              switch (value.toInt()) {
+                                case 0:
+                                  return 'Pitch';
+                                case 1:
+                                  return 'Yaw';
+                                case 2:
+                                  return 'Roll';
+                                default:
+                                  return '';
+                              }
+                            },
+                          ),
+                          leftTitles: SideTitles(
+                            showTitles: false,
+                          ),
+                        ),
+                        borderData: FlBorderData(
+                          show: true,
+                          border: Border.all(
+                              color: Colors.white.withOpacity(0.2), width: 1),
+                        ),
+                        minY: -60,
+                        maxY: 60,
+                        barGroups: [
+                          BarChartGroupData(
+                            x: 0,
+                            barRods: [
+                              BarChartRodData(
+                                y: pitch ?? 0.0,
+                                colors: [Colors.red],
+                                width: 20,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              // Marker rod for base_pitch
+                              BarChartRodData(
+                                y: base_pitch ?? 0.0,
+                                colors: [Colors.red.withOpacity(0.5)],
+                                width: 4, // Thinner rod for marker
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                            ],
+                            barsSpace: 12,
+                          ),
+                          BarChartGroupData(
+                            x: 1,
+                            barRods: [
+                              BarChartRodData(
+                                y: yaw ?? 0.0,
+                                colors: [Colors.blue],
+                                width: 20,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              // Marker rod for base_yaw
+                              BarChartRodData(
+                                y: base_yaw ?? 0.0,
+                                colors: [Colors.blue.withOpacity(0.5)],
+                                width: 4, // Thinner rod for marker
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                            ],
+                            barsSpace: 12,
+                          ),
+                          BarChartGroupData(
+                            x: 2,
+                            barRods: [
+                              BarChartRodData(
+                                y: roll ?? 0.0,
+                                colors: [Colors.green],
+                                width: 20,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              // Marker rod for base_roll
+                              BarChartRodData(
+                                y: base_roll ?? 0.0,
+                                colors: [Colors.green.withOpacity(0.5)],
+                                width: 4, // Thinner rod for marker
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                            ],
+                            barsSpace: 12,
+                          ),
+                        ],
+                        alignment: BarChartAlignment.spaceAround,
+                      ),
+                    ),
+                  ))),
+          Visibility(
+              visible: debugIsHidden,
+              child: Container(
+                child: Column(children: [
+                  ElevatedButton(
+                    child: Text("set angle"),
+                    onPressed: () => {
+                      setState(() {
+                        base_pitch = pitch ?? 0.0;
+                        base_yaw = yaw ?? 0.0;
+                        base_roll = roll ?? 0.0;
+                      })
+                    },
+                  )
+                ]),
+              ))
+        ]),
       ],
     );
   }
@@ -410,8 +569,8 @@ class _CameraScreenState extends State<CameraScreen>
   ElevatedButton _buttonCameraControl(context) {
     return ElevatedButton(
       style: ElevatedButton.styleFrom(
-        backgroundColor: rendering ? Colors.redAccent : Colors.green,
-      ),
+          backgroundColor: rendering ? Colors.redAccent : Colors.green,
+          minimumSize: Size(double.infinity, 60)),
       onPressed: () {
         setState(() {
           if (rendering == false) {
@@ -430,8 +589,8 @@ class _CameraScreenState extends State<CameraScreen>
   ElevatedButton _buttonStreamControl(context) {
     return ElevatedButton(
       style: ElevatedButton.styleFrom(
-        backgroundColor: streaming ? Colors.redAccent : Colors.green,
-      ),
+          backgroundColor: streaming ? Colors.redAccent : Colors.green,
+          minimumSize: Size(double.infinity, 60)),
       onPressed: rendering
           ? () {
               setState(() {
@@ -442,6 +601,18 @@ class _CameraScreenState extends State<CameraScreen>
             }
           : null,
       child: Text(streaming ? 'Stop' : 'Start'),
+    );
+  }
+
+  ElevatedButton _buttonDebugVisible(context) {
+    return ElevatedButton(
+      style: ElevatedButton.styleFrom(minimumSize: Size(double.infinity, 60)),
+      onPressed: () {
+        setState(() {
+          debugIsHidden = !debugIsHidden;
+        });
+      },
+      child: Text('Debug'),
     );
   }
 
@@ -473,7 +644,7 @@ class _CameraScreenState extends State<CameraScreen>
                       });
                     },
                     child: Text('Reset'),
-                  )
+                  ),
                 ],
               ))
             ],
@@ -487,23 +658,23 @@ class _CameraScreenState extends State<CameraScreen>
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        ButtonBar(
-          alignment: MainAxisAlignment.center,
-          children: [
-            _buttonCameraControl(context),
-            _buttonStreamControl(context),
-            ElevatedButton(
-                onPressed: rendering
-                    ? () {
-                        showModalBottomSheet(
-                            context: context,
-                            builder: (context) {
-                              return _bottomSheet(context);
-                            });
-                      }
-                    : null,
-                child: Text("Cam Set"))
-          ],
+        Expanded(
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 4),
+            child: _buttonCameraControl(context),
+          ),
+        ),
+        Expanded(
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 4),
+            child: _buttonStreamControl(context),
+          ),
+        ),
+        Expanded(
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 4),
+            child: _buttonDebugVisible(context),
+          ),
         ),
       ],
     );
