@@ -33,6 +33,8 @@ dependencies:
   camera: ^0.10.1
   image: ^3.0.1
   tflite_flutter: ^0.10.2
+  flutter_isolate: ^2.0.0
+  fl_chart: ^0.40.0
   processing_camera_image: ^0.0.9
   
 
