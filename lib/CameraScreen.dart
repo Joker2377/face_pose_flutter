@@ -142,6 +142,9 @@ class _CameraScreenState extends State<CameraScreen>
       mes =
           'Pitch: $pitchStr, Yaw: $yawStr, Roll: $rollStr, Confidence: ${pose['confidence']!.toStringAsFixed(2)} \nProcessing time: $processingTime ms';
       detected = true;
+    } else if (pose.isEmpty) {
+      detected = false;
+      mes = 'Empty result';
     } else {
       detected = false;
       mes = 'Detection failed';

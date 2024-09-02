@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:isolate';
 import 'package:image/image.dart' as imglib;
 import 'package:face_pose/utils/TFLiteModel.dart';
@@ -74,9 +75,15 @@ class IsolateManager {
       'responsePort': responsePort.sendPort
     });
     print('Data sent');
-    var result = await responsePort.first as Map<String, double>;
-    print('Got result: ${result.values}');
-    return result;
+    try {
+      var result = await responsePort.first.timeout(Duration(seconds: 1))
+          as Map<String, double>;
+      print('Got result: ${result.values}');
+      return result;
+    } on TimeoutException catch (e) {
+      print('Timeout: $e');
+      return {};
+    }
   }
 
   void dispose() {
