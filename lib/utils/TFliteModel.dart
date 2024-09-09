@@ -27,6 +27,7 @@ class TFliteModel {
   }
 
   Future<Map<String, double>> rawPredictPose(
+      // no transform
       List<List<List<List<double>>>> inputData) async {
     if (_interpreter == null) {
       print('Interpreter is not loaded');
