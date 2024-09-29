@@ -4,11 +4,10 @@ import 'package:face_pose/IsolateManager.dart';
 import 'package:face_pose/utils/tool.dart';
 
 import 'package:flutter/material.dart';
-import 'dart:typed_data';
+
 import 'package:image/image.dart' as imglib;
 import 'dart:async';
 import 'package:flutter/services.dart';
-import 'package:fl_chart/fl_chart.dart';
 
 IsolateManager manager = IsolateManager();
 // static manager
@@ -109,6 +108,7 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   void initZoomLevel() async {
+    await _cameraService.initializeControllerFuture;
     _minZoom = await _cameraService._controller.getMinZoomLevel();
     _maxZoom = await _cameraService._controller.getMaxZoomLevel();
   }
@@ -146,11 +146,7 @@ class _CameraScreenState extends State<CameraScreen>
       yaw = pose['yaw'] ?? 0.0;
       roll = pose['roll'] ?? 0.0;
 
-      var pitchStr = pitch!.toStringAsFixed(2);
-      var yawStr = yaw!.toStringAsFixed(2);
-      var rollStr = roll!.toStringAsFixed(2);
-      mes =
-          'Pitch: $pitchStr, Yaw: $yawStr, Roll: $rollStr, Confidence: ${pose['confidence']!.toStringAsFixed(2)} \nProcessing time: $processingTime ms';
+      mes = 'Processing time: $processingTime ms';
       detected = true;
     } else if (pose.isEmpty) {
       detected = false;
@@ -199,7 +195,7 @@ class _CameraScreenState extends State<CameraScreen>
                     });
               }
             : null,
-        child: Icon(Icons.settings),
+        child: const Icon(Icons.settings),
       ),
       body: FutureBuilder<void>(
         future: _cameraService.initializeControllerFuture,
@@ -217,49 +213,146 @@ class _CameraScreenState extends State<CameraScreen>
   Column _column(context) {
     return Column(
       children: [
-        SizedBox(
+        const SizedBox(
           height: 50,
         ),
-        _imageView(context),
         Padding(
-            padding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 5),
+            child: _imageView(context)),
+        Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
             child: _buttonRow(context)),
         Visibility(
             visible: !debugIsHidden,
-            replacement: SizedBox.shrink(),
+            replacement: const SizedBox.shrink(),
             child: Column(children: [
-              SizedBox(
-                height: 20,
-                child: Text('Input Image'),
-              ),
-              Container(
-                  height: 100,
-                  child: _currimg != null && streaming
-                      ? Image.memory(
-                          Uint8List.fromList(
-                              imglib.encodeJpg(_currimg!, quality: 50)),
-                        )
-                      : Text('No image')),
-              SizedBox(height: 20),
-              SizedBox(
-                height: 40,
-                child: Text(
-                  mes,
+              Row(children: [
+                Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 15),
+                    child: Container(
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                              color: Colors.white, width: 2), // Add border here
+                          // Make the border rounded
+                        ),
+                        height: 100,
+                        width: 100,
+                        child: _currimg != null && streaming
+                            ? Image.memory(
+                                Uint8List.fromList(
+                                    imglib.encodeJpg(_currimg!, quality: 50)),
+                              )
+                            : const Center(child: Text('No image')))),
+                Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 5),
+                    child: Text(
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontFamily: 'Roboto',
+                          decoration: TextDecoration.underline,
+                        ),
+                        mes))
+              ]),
+              Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 2,
+                    child: Container(
+                      color: Colors.grey,
+                    ),
+                  )),
+              Row(children: [
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 15, vertical: 20),
+                  child: Container(
+                      width: 120,
+                      child: Text(
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontFamily: 'Roboto',
+                          ),
+                          pitch != null
+                              ? 'Pitch: ${pitch!.toStringAsFixed(2)}°'
+                              : 'Pitch: 0.0°')),
                 ),
-              )
+                Icon(
+                  pitch == null
+                      ? Icons.close
+                      : (abs(pitch!) > 7)
+                          ? (pitch! > 0
+                              ? Icons.arrow_circle_up
+                              : Icons.arrow_circle_down)
+                          : Icons.do_not_disturb_on_rounded,
+                  size: 50,
+                  color: Colors.red,
+                ),
+              ]),
+              Row(children: [
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 15, vertical: 20),
+                  child: Container(
+                      width: 120,
+                      child: Text(
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontFamily: 'Roboto',
+                          ),
+                          yaw != null
+                              ? 'Yaw: ${yaw!.toStringAsFixed(2)}°'
+                              : 'Yaw: 0.0°')),
+                ),
+                Icon(
+                  yaw == null
+                      ? Icons.close
+                      : (abs(yaw!) > 7)
+                          ? (yaw! > 0
+                              ? Icons.arrow_circle_left
+                              : Icons.arrow_circle_right)
+                          : Icons.do_not_disturb_on_rounded,
+                  size: 50,
+                  color: Colors.blue,
+                ),
+              ]),
+              Row(children: [
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 15, vertical: 20),
+                  child: Container(
+                      width: 120,
+                      child: Text(
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontFamily: 'Roboto',
+                          ),
+                          roll != null
+                              ? 'Roll: ${roll!.toStringAsFixed(2)}°'
+                              : 'Roll: 0.0°')),
+                ),
+                Icon(
+                  roll == null
+                      ? Icons.close
+                      : (abs(roll!) > 7)
+                          ? (roll! > 0 ? Icons.rotate_right : Icons.rotate_left)
+                          : Icons.do_not_disturb_on_rounded,
+                  size: 50,
+                  color: Colors.green,
+                ),
+              ])
             ])),
         Visibility(
             visible: debugIsHidden,
             child: Column(children: [
-              Row(
-                children: [
-                  Padding(
-                      padding:
-                          EdgeInsets.symmetric(horizontal: 15, vertical: 15),
-                      child: Text(
-                          'Base angle: Pitch: ${base_pitch.toStringAsFixed(2)}, Yaw: ${base_yaw.toStringAsFixed(2)}, Roll: ${base_roll.toStringAsFixed(2)}'))
-                ],
-              ),
+              Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 2,
+                    child: Container(
+                      color: Colors.grey,
+                    ),
+                  )),
               Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                 Container(
                     child: pitch != null &&
@@ -269,32 +362,65 @@ class _CameraScreenState extends State<CameraScreen>
                             abs(yaw! - base_yaw) < tolerance_angle &&
                             abs(roll! - base_roll) < tolerance_angle &&
                             detected
-                        ? Icon(
-                            size: 50,
+                        ? const Icon(
+                            size: 70,
                             Icons.check,
                             color: Colors.green,
                           )
-                        : Icon(
-                            size: 50,
+                        : const Icon(
+                            size: 70,
                             Icons.close,
                             color: Colors.red,
                           )),
               ]),
+              Center(
+                  child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 15, vertical: 15),
+                      child: Text(
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontFamily: 'Roboto',
+                          ),
+                          pitch != null &&
+                                  yaw != null &&
+                                  roll != null &&
+                                  abs(pitch! - base_pitch) < tolerance_angle &&
+                                  abs(yaw! - base_yaw) < tolerance_angle &&
+                                  abs(roll! - base_roll) < tolerance_angle &&
+                                  detected
+                              ? 'Focused'
+                              : (detected)
+                                  ? 'Not focused'
+                                  : 'No face detected'))),
               Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 2,
+                    child: Container(
+                      color: Colors.grey,
+                    ),
+                  )),
+              Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
                   child: Row(children: [
                     Expanded(
                         child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
                       child: _buttonResetAngle(context),
                     )),
                     Expanded(
                         child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
                       child: _buttonSetAngle(context),
                     ))
                   ])),
-              _sliderAcceptRate(context),
+              Padding(
+                  padding: EdgeInsets.only(top: 10),
+                  child: Padding(
+                      padding: EdgeInsets.only(right: 50),
+                      child: _sliderAcceptRate(context))),
             ])),
       ],
     );
@@ -310,8 +436,8 @@ class _CameraScreenState extends State<CameraScreen>
                   decoration: BoxDecoration(
                     border: Border.all(
                         color: detected && streaming
-                            ? Colors.green
-                            : Colors.redAccent, // Set border color
+                            ? Colors.blue
+                            : Colors.grey, // Set border color
                         width: 4), // Add border here
                     borderRadius:
                         BorderRadius.circular(15), // Make the border rounded
@@ -372,8 +498,9 @@ class _CameraScreenState extends State<CameraScreen>
 
   Row _sliderAcceptRate(context) {
     return Row(children: [
-      SizedBox(width: 20),
-      Text('Tolerance: ${tolerance_angle.toStringAsFixed(0)}'),
+      Padding(
+          padding: EdgeInsets.only(left: 15),
+          child: Text('Tolerance: ${tolerance_angle.toStringAsFixed(0)}')),
       Expanded(
           child: Slider(
         min: 0.0,
@@ -389,21 +516,20 @@ class _CameraScreenState extends State<CameraScreen>
                 });
               },
       )),
-      SizedBox(width: 10),
     ]);
   }
 
   Row _sliderZoomFactor(context, setState) {
     return Row(
       children: [
-        SizedBox(width: 20),
+        const SizedBox(width: 20),
         Text('Zoom factor: $zoom_factor'),
         Expanded(
             child: Slider(
           min: _minZoom,
           max: _maxZoom,
           divisions: (_maxZoom - _minZoom).toInt() * 10,
-          label: '$zoom_factor',
+          label: '${zoom_factor.toStringAsFixed(2)}',
           value: zoom_factor.toDouble(),
           onChanged: !rendering
               ? null
@@ -414,7 +540,7 @@ class _CameraScreenState extends State<CameraScreen>
                   });
                 },
         )),
-        SizedBox(width: 10),
+        const SizedBox(width: 10),
       ],
     );
   }
@@ -422,7 +548,7 @@ class _CameraScreenState extends State<CameraScreen>
   Row _sliderScrollX(context, setState) {
     return Row(
       children: [
-        SizedBox(width: 20),
+        const SizedBox(width: 20),
         Text('Scroll X: $scrollX'),
         Expanded(
             child: Slider(
@@ -439,7 +565,7 @@ class _CameraScreenState extends State<CameraScreen>
                   });
                 },
         )),
-        SizedBox(width: 10),
+        const SizedBox(width: 10),
       ],
     );
   }
@@ -447,7 +573,7 @@ class _CameraScreenState extends State<CameraScreen>
   Row _sliderScrollY(context, setState) {
     return Row(
       children: [
-        SizedBox(width: 20),
+        const SizedBox(width: 20),
         Text('Scroll Y: $scrollY'),
         Expanded(
             child: Slider(
@@ -464,7 +590,7 @@ class _CameraScreenState extends State<CameraScreen>
                   });
                 },
         )),
-        SizedBox(width: 10),
+        const SizedBox(width: 10),
       ],
     );
   }
@@ -472,7 +598,7 @@ class _CameraScreenState extends State<CameraScreen>
   Row _sliderThres(context, setState) {
     return Row(
       children: [
-        SizedBox(width: 20),
+        const SizedBox(width: 20),
         Text('threshold: $conf_thres'),
         Expanded(
             child: Slider(
@@ -489,7 +615,7 @@ class _CameraScreenState extends State<CameraScreen>
                   });
                 },
         )),
-        SizedBox(width: 10),
+        const SizedBox(width: 10),
       ],
     );
   }
@@ -497,7 +623,7 @@ class _CameraScreenState extends State<CameraScreen>
   Row _sliderDetectFrame(context, setState) {
     return Row(
       children: [
-        SizedBox(width: 20),
+        const SizedBox(width: 20),
         Text('refresh frame: $detect_frame'),
         Expanded(
             child: Slider(
@@ -514,15 +640,16 @@ class _CameraScreenState extends State<CameraScreen>
                   });
                 },
         )),
-        SizedBox(width: 10),
+        const SizedBox(width: 10),
       ],
     );
   }
 
   ElevatedButton _buttonResetAngle(context) {
     return ElevatedButton(
-      style: ElevatedButton.styleFrom(minimumSize: Size(double.infinity, 60)),
-      child: Text("reset"),
+      style: ElevatedButton.styleFrom(
+          minimumSize: const Size(double.infinity, 60)),
+      child: const Text("reset"),
       onPressed: () => {
         setState(() {
           base_pitch = 0.0;
@@ -535,8 +662,9 @@ class _CameraScreenState extends State<CameraScreen>
 
   ElevatedButton _buttonSetAngle(context) {
     return ElevatedButton(
-      style: ElevatedButton.styleFrom(minimumSize: Size(double.infinity, 60)),
-      child: Text("set angle"),
+      style: ElevatedButton.styleFrom(
+          minimumSize: const Size(double.infinity, 60)),
+      child: const Text("set angle"),
       onPressed: !streaming
           ? () {
               setState(() {
@@ -559,7 +687,7 @@ class _CameraScreenState extends State<CameraScreen>
     return ElevatedButton(
       style: ElevatedButton.styleFrom(
           backgroundColor: rendering ? Colors.redAccent : Colors.green,
-          minimumSize: Size(double.infinity, 60)),
+          minimumSize: const Size(double.infinity, 60)),
       onPressed: () {
         setState(() {
           if (rendering == false) {
@@ -584,7 +712,7 @@ class _CameraScreenState extends State<CameraScreen>
     return ElevatedButton(
       style: ElevatedButton.styleFrom(
           backgroundColor: streaming ? Colors.redAccent : Colors.green,
-          minimumSize: Size(double.infinity, 60)),
+          minimumSize: const Size(double.infinity, 60)),
       onPressed: rendering
           ? () {
               setState(() {
@@ -600,13 +728,14 @@ class _CameraScreenState extends State<CameraScreen>
 
   ElevatedButton _buttonDebugVisible(context) {
     return ElevatedButton(
-      style: ElevatedButton.styleFrom(minimumSize: Size(double.infinity, 60)),
+      style: ElevatedButton.styleFrom(
+          minimumSize: const Size(double.infinity, 60)),
       onPressed: () {
         setState(() {
           debugIsHidden = !debugIsHidden;
         });
       },
-      child: Text('Debug'),
+      child: const Text('Debug'),
     );
   }
 
@@ -637,7 +766,7 @@ class _CameraScreenState extends State<CameraScreen>
                         conf_thres = 0.3;
                       });
                     },
-                    child: Text('Reset'),
+                    child: const Text('Reset'),
                   ),
                 ],
               ))
@@ -654,19 +783,19 @@ class _CameraScreenState extends State<CameraScreen>
       children: [
         Expanded(
           child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 4),
             child: _buttonCameraControl(context),
           ),
         ),
         Expanded(
           child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 4),
             child: _buttonStreamControl(context),
           ),
         ),
         Expanded(
           child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 4),
             child: _buttonDebugVisible(context),
           ),
         ),
